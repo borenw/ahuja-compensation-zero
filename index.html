@@ -1,0 +1,287 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ahuja Zero Sweep</title>
+<style>
+/* Layout: Confluence-style page. One column, blue banner per section, index at top, schematic as the centerpiece. Single light theme by request (white background). */
+:root{
+  --bg:#FFFFFF; --ink:#172B4D; --muted:#5E6C84; --line:#DFE1E6; --panel:#F4F5F7;
+  --blue:#0052CC; --blue-soft:#DEEBFF; --red:#DE350B; --ref:#97A0AF; --hi:#FFF36B;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:26px;margin:0;line-height:1.2;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:70ch}
+h2{background:var(--blue);color:#FFFFFF;font-size:16px;font-weight:600;margin:0;padding:8px 14px;border-radius:3px 3px 0 0}
+section{border:1px solid var(--line);border-radius:3px}
+.body{padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+nav{background:var(--blue-soft);border-left:4px solid var(--blue);padding:10px 14px}
+nav b{display:block;margin-bottom:4px}
+nav ol{margin:0;padding-left:20px}
+nav ul{margin:0;padding-left:18px;color:var(--muted)}
+a{color:var(--blue)}
+.row{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+button{font:inherit;border:1px solid var(--blue);background:var(--bg);color:var(--blue);padding:6px 12px;border-radius:3px;cursor:pointer}
+button.primary{background:var(--blue);color:#FFFFFF}
+button:focus-visible,input:focus-visible{outline:3px solid #4C9AFF;outline-offset:2px}
+input[type=range]{flex:1 1 260px;min-width:0;accent-color:var(--blue)}
+.readout{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;font-weight:600;color:var(--blue)}
+label.p{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+label.p input{font:inherit;font-family:var(--mono);width:96px;padding:5px 6px;border:1px solid var(--line);border-radius:3px;color:var(--ink);background:var(--bg)}
+.scroll{overflow-x:auto}
+svg#sch{display:block;width:100%;min-width:880px;height:auto;background:var(--bg)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-variant-numeric:tabular-nums}
+th{background:var(--panel);text-align:left;font-size:13px;padding:7px 10px;border:1px solid var(--line);white-space:nowrap}
+td{padding:7px 10px;border:1px solid var(--line);vertical-align:middle}
+td.n{font-family:var(--mono);white-space:nowrap}
+.bar{height:10px;background:var(--panel);border-radius:2px;min-width:110px}
+.bar i{display:block;height:100%;border-radius:2px}
+.v{color:var(--blue)} .c{color:var(--red)}
+.chk{display:flex;align-items:center;gap:6px;cursor:pointer}
+#sweep{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--bg);box-shadow:0 4px 10px rgba(9,30,66,.18)}
+#sweep h2{font-size:14px;padding:5px 14px}
+#sweep .body{padding:8px 14px;gap:8px}
+#sweep button{padding:4px 10px}
+section{scroll-margin-top:170px}
+.note{color:var(--muted);font-size:13px;margin:0;max-width:80ch}
+</style>
+</head><body style="margin:0">
+
+<div class="wrap">
+  <header>
+    <h1>Ahuja compensation: sweeping through the left half plane zero</h1>
+    <p class="sub">Ii is a fixed 1 µA sine. Sweep its frequency through the zero and watch Vo stop falling, then see the voltage and current at each node.</p>
+  </header>
+
+  <nav aria-label="Index">
+    <b>Index</b>
+    <ol>
+      <li><a href="#sweep">Frequency sweep</a></li>
+      <li><a href="#bodes">Bode plot of Vo / Ii</a>
+        <ul><li>Where Vo stops falling, and where it starts again</li></ul></li>
+      <li><a href="#schematic">Annotated schematic</a>
+        <ul><li>Blue boxes are voltages, red boxes are currents</li></ul></li>
+      <li><a href="#nodes">Node table</a></li>
+      <li><a href="#model">Model and values</a></li>
+    </ol>
+  </nav>
+
+  <section id="sweep">
+    <h2>1. Frequency sweep</h2>
+    <div class="body">
+      <div class="row">
+        <button class="primary" id="play" type="button">▶ Play sweep</button>
+        <input id="f" type="range" min="-1" max="1" step="0.01" value="0" aria-label="Frequency relative to the zero, log scale">
+        <span class="readout" id="fread"></span>
+      </div>
+      <div class="row">
+        <button type="button" data-j="-1">0.1 × fz</button>
+        <button type="button" data-j="0">1 × fz</button>
+        <button type="button" data-j="1">10 × fz</button>
+        <label class="chk" for="fix"><input id="fix" type="checkbox" checked> Fixed y scale</label>
+        <span class="readout" id="yread"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="bodes">
+    <h2>2. Bode plot of Vo / Ii</h2>
+    <div class="body">
+      <div class="scroll"><svg id="bode" viewBox="0 0 1000 640" role="img" aria-label="Magnitude and phase of Vo over Ii versus frequency"></svg></div>
+      <span class="readout" id="bread"></span>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>#</th><th>📍 Region</th><th>📶 Frequency range</th><th>📈 |Vo / Ii|</th><th>🔄 Phase of −Vo / Ii</th><th>📊 Width on this plot (decades)</th></tr></thead>
+          <tbody id="rt"></tbody>
+        </table>
+      </div>
+      <p class="note">The shaded band is the 0.1× to 10× range of the slider. The plot runs wider, 0.01× to 100×, so you can see where the plateau ends. Dashed gray lines are the two asymptotes: 1/(ω·Cc) below the zero and 1/gmc above it. The phase rises after the zero, which is what makes it a left half plane zero. A right half plane zero gives the same flattening in magnitude but the phase keeps falling.</p>
+    </div>
+  </section>
+
+  <section id="schematic">
+    <h2>3. Annotated schematic</h2>
+    <div class="body">
+      <div class="scroll"><svg id="sch" viewBox="0 0 1860 1060" role="img" aria-label="Ahuja compensated output stage with voltage and current waveforms at each node"></svg></div>
+      <p class="note" id="note"></p>
+    </div>
+  </section>
+
+  <section id="nodes">
+    <h2>4. Node table</h2>
+    <div class="body">
+      <div class="scroll">
+        <table>
+          <thead><tr><th>#</th><th>🔌 Quantity</th><th>📏 Magnitude</th><th>📊 Relative size</th><th>🔄 Phase vs Vo</th></tr></thead>
+          <tbody id="tb"></tbody>
+        </table>
+      </div>
+      <p class="note">Rows are ranked by size within voltages (blue) and within currents (red). Bars compare each row with the largest of its kind.</p>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2>5. Model and values</h2>
+    <div class="body">
+      <div class="row">
+        <button type="button" data-p="200,1,5,0.5,0.1">Wide plateau values</button>
+        <button type="button" data-p="200,1,1,5,0.1">Earlier values (short plateau)</button>
+      </div>
+      <div class="row">
+        <label class="p" for="gmc">gmc of vb device (µS)<input id="gmc" type="number" value="200" min="1" step="10"></label>
+        <label class="p" for="cc">Cc (pF)<input id="cc" type="number" value="1" min="0.01" step="0.1"></label>
+        <label class="p" for="gm2">gm2 of Mb (mS)<input id="gm2" type="number" value="5" min="0.01" step="0.1"></label>
+        <label class="p" for="cl">CL (pF)<input id="cl" type="number" value="0.5" min="0.01" step="0.1"></label>
+        <label class="p" for="c1">C1 at gate of Mb (pF)<input id="c1" type="number" value="0.1" min="0.001" step="0.05"></label>
+      </div>
+      <p class="note">Linear small-signal phasor model, not a transistor-level simulation. Fixed values: Ii = 1 µA, R1 = ro2 = 100 kΩ. The vb device is modeled as an ideal common gate: 1/gmc looking into its source, and all of its source current delivered to the V1 node. The zero is at gmc/Cc and the pole pair is near √(gm2·gmc / (C1·CL)), so the plateau widens with larger Cc and gm2 and with smaller CL, C1 and gmc. The pole pair is lightly damped in this ideal model, which is the peak at the end of the plateau. Both value sets are illustrative, so replace them with your own.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+const C=(r,i)=>({r:r,i:i||0}), add=(a,b)=>C(a.r+b.r,a.i+b.i), mul=(a,b)=>C(a.r*b.r-a.i*b.i,a.r*b.i+a.i*b.r),
+div=(a,b)=>{const d=b.r*b.r+b.i*b.i;return C((a.r*b.r+a.i*b.i)/d,(a.i*b.r-a.r*b.i)/d)}, mag=a=>Math.hypot(a.r,a.i), ang=a=>Math.atan2(a.i,a.r), sc=(a,k)=>C(a.r*k,a.i*k);
+const $=id=>document.getElementById(id), NS="http://www.w3.org/2000/svg";
+const R1=100e3,ro2=100e3,Ii=1e-6;
+const col={ink:"#172B4D",blue:"#0052CC",red:"#DE350B",ref:"#97A0AF",grid:"#DFE1E6"};
+function P(){const g=(id,k,d)=>{const v=parseFloat($(id).value);return (v>0?v:d)*k};return{gmc:g("gmc",1e-6,200),Cc:g("cc",1e-12,1),gm2:g("gm2",1e-3,1),CL:g("cl",1e-12,.5),C1:g("c1",1e-12,.1)}}
+function solve(mult){
+  const p=P(), fz=p.gmc/(2*Math.PI*p.Cc), w=2*Math.PI*fz*mult, s=C(0,w), one=C(1);
+  const Yc=div(sc(s,p.Cc),add(one,sc(s,p.Cc/p.gmc))), Z1=div(C(R1),add(one,sc(s,R1*p.C1)));
+  const den=add(add(C(1/ro2),sc(s,p.CL)),mul(Yc,add(one,sc(Z1,p.gm2))));
+  const Vo=div(sc(Z1,-p.gm2*Ii),den), ic=mul(Yc,Vo), iz1=add(C(Ii),ic), V1=mul(Z1,iz1);
+  const Vx=sc(ic,1/p.gmc);
+  return{fz,p,f:fz*mult,Vo,Vx,V1,ic,iz1,id2:sc(V1,p.gm2),iCL:mul(sc(s,p.CL),Vo),y:mag(Yc)/p.gmc};
+}
+/* ---------- static schematic (coordinates in the same grid as the matplotlib figure) ---------- */
+const svg=$("sch"), X=x=>x*100, Y=y=>(10.6-y)*100;
+function el(n,a,t){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;svg.appendChild(e);return e}
+function L(xs,ys,o){return el("polyline",Object.assign({points:xs.map((x,i)=>X(x)+","+Y(ys[i])).join(" "),fill:"none",stroke:col.ink,"stroke-width":3.5,"stroke-linecap":"round","stroke-linejoin":"round"},o||{}))}
+function T(x,y,s,o){return el("text",Object.assign({x:X(x),y:Y(y),"font-size":24,fill:col.ink,"font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"},o||{}),s)}
+function dot(x,y){el("circle",{cx:X(x),cy:Y(y),r:9,fill:col.ink})}
+function res(x,y0,y1){const a=Math.min(y0,y1),b=Math.max(y0,y1),m=(a+b)/2,h=Math.min(.6,(b-a)/2-.15),xs=[x],ys=[a];for(let i=0;i<=12;i++){xs.push(i==0||i==12?x:x+(i%2?.18:-.18));ys.push(m-h+i*h/6)}xs.push(x);ys.push(b);L(xs,ys)}
+function mos(x,y,pm){L([x-.3,x-.3],[y-.5,y+.5]);L([x-.45,x-.45],[y-.35,y+.35]);L([x-.3,x,x],[y+.35,y+.35,y+.8]);L([x-.3,x,x],[y-.35,y-.35,y-.8]);
+  if(pm){el("circle",{cx:X(x-.55),cy:Y(y),r:9,fill:"#FFFFFF",stroke:col.ink,"stroke-width":3});L([x-.9,x-.64],[y,y])}else L([x-.9,x-.45],[y,y])}
+function gnd(x,y){[.3,.2,.1].forEach((w,i)=>L([x-w,x+w],[y-.12*i,y-.12*i]))}
+function arrow(x0,y0,x1,y1,c){const a=Math.atan2(Y(y1)-Y(y0),X(x1)-X(x0)),hx=X(x1),hy=Y(y1),r=16;
+  el("line",{x1:X(x0),y1:Y(y0),x2:hx,y2:hy,stroke:c,"stroke-width":4});
+  el("polygon",{points:[[hx,hy],[hx-r*Math.cos(a-.45),hy-r*Math.sin(a-.45)],[hx-r*Math.cos(a+.45),hy-r*Math.sin(a+.45)]].map(p=>p.join(",")).join(" "),fill:c})}
+el("rect",{x:0,y:0,width:1860,height:1060,fill:"#FFFFFF"});
+L([2,11.5],[10,10]);T(11.7,9.92,"VDD (AC ground)");
+L([1.2,10.1],[8.5,8.5]);arrow(.1,8.5,1.2,8.5,col.red);T(.15,8.85,"Ii = 1 µA",{fill:col.red,"font-weight":700});
+res(2.5,8.5,10);T(2.8,9.15,"R1 ∥ C1",{"font-size":21});dot(2.5,8.5);
+el("circle",{cx:X(4.85),cy:Y(7),r:95,fill:"#FFF36B"});
+mos(5,7);L([5,5],[7.8,8.5]);dot(5,8.5);L([5,5],[6.2,5.5]);T(3.35,6.9,"vb");T(5.15,7.1,"Mc",{"font-size":21});T(5.15,6.8,"1/gmc",{"font-size":21});
+L([5,5],[5.5,3.4]);el("circle",{cx:X(5),cy:Y(3),r:40,fill:"#FFFFFF",stroke:col.ink,"stroke-width":3.5});arrow(5,3.25,5,2.78,col.ink);L([5,5],[2.6,.8]);gnd(5,.8);
+dot(5,5.5);L([5,7.9],[5.5,5.5]);L([8.1,11],[5.5,5.5]);L([7.9,7.9],[5.2,5.8]);L([8.1,8.1],[5.2,5.8]);T(7.8,5.95,"Cc");
+arrow(7.3,5.72,6.0,5.72,col.red);T(6.3,5.85,"ic",{fill:col.red,"font-weight":700});arrow(5.25,7.95,5.25,8.32,col.red);
+mos(11,8.5,true);L([11,11],[9.3,10]);L([11,11],[7.7,5.5]);dot(11,5.5);T(11.2,8.42,"Mb (gm2)",{"font-size":21});
+L([11,14],[5.5,5.5]);el("circle",{cx:X(14.1),cy:Y(5.5),r:10,fill:"#FFFFFF",stroke:col.ink,"stroke-width":3.5});T(13.75,5.75,"OUT",{"font-weight":700});
+res(12.3,5.5,.8);gnd(12.3,.8);dot(12.3,5.5);T(11.5,3.05,"ro2",{"font-size":21});
+L([13.5,13.5],[5.5,3.25]);L([13.5,13.5],[3.05,.8]);L([13.2,13.8],[3.25,3.25]);L([13.2,13.8],[3.05,3.05]);gnd(13.5,.8);dot(13.5,5.5);T(13.9,3.05,"CL");
+[[7.2,8.65,"V1"],[4.3,5.3,"Vx"],[10.4,5.1,"Vo"]].forEach(a=>T(a[0],a[1],a[2],{fill:col.blue,"font-weight":700,"font-size":28}));
+[[3.0,6.75,3.8,8.5],[6.1,4.6,5,5.5],[14.9,6.2,14.2,5.5],[12.1,7.8,11,7.2]].forEach(a=>L([a[0],a[2]],[a[1],a[3]],{stroke:col.ref,"stroke-width":2,"stroke-dasharray":"4 6"}));
+/* ---------- mini waveform boxes ---------- */
+function mini(box,c){const x0=X(box[0]),y0=Y(box[1]+box[3]),w=box[2]*100,h=box[3]*100;
+  el("rect",{x:x0,y:y0,width:w,height:h,fill:"#FFFFFF",stroke:c,"stroke-width":3});
+  el("line",{x1:x0,y1:y0+h/2,x2:x0+w,y2:y0+h/2,stroke:col.grid,"stroke-width":2});
+  const ref=el("path",{fill:"none",stroke:col.ref,"stroke-width":2.5,"stroke-dasharray":"8 6"}), tr=el("path",{fill:"none",stroke:c,"stroke-width":5,"stroke-linejoin":"round"});
+  const ti=el("text",{x:x0+w/2,y:y0-9,"text-anchor":"middle","font-size":21,"font-weight":700,fill:c,"font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"});
+  const path=(amp,ph)=>{let d="";for(let k=0;k<=80;k++){const t=k/40;d+=(k?"L":"M")+(x0+w*k/80).toFixed(1)+","+(y0+h/2-amp*Math.cos(2*Math.PI*t+ph)*h/2.5).toFixed(1)}return d};
+  ref.setAttribute("d",path(1,0));
+  const sl=el("text",{x:x0+8,y:y0+19,"font-size":16,fill:"#5E6C84","font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"});
+  return (title,amp,ph,s)=>{tr.setAttribute("d",path(amp,ph));ti.textContent=title;sl.textContent=s||""}}
+const boxes={V1:mini([.2,4.5,3.3,1.8],col.blue),iz1:mini([.2,2.0,3.3,1.8],col.red),Vx:mini([6.1,2.9,3.3,1.7],col.blue),ic:mini([6.1,.6,3.3,1.7],col.red),
+  Vo:mini([14.9,5.3,3.3,1.8],col.blue),iCL:mini([14.9,2.8,3.3,1.8],col.red),id2:mini([12.1,7.5,3.3,1.8],col.red)};
+/* ---------- branch admittance inset ---------- */
+const bx=X(16.2),by=Y(9.8),bw=210,bh=170, bX=l=>bx+(l+1)/2*bw, bY=v=>by+(-Math.log10(v))*bh/1.05;
+el("rect",{x:bx,y:by,width:bw,height:bh,fill:"#FFFFFF",stroke:col.grid,"stroke-width":2});
+el("line",{x1:bX(0),y1:by,x2:bX(0),y2:by+bh,stroke:col.ref,"stroke-width":2,"stroke-dasharray":"4 5"});
+(function(){let d="";for(let k=0;k<=60;k++){const l=-1+k/30,m=Math.pow(10,l);d+=(k?"L":"M")+bX(l).toFixed(1)+","+bY(m/Math.sqrt(1+m*m)).toFixed(1)}el("path",{d:d,fill:"none",stroke:col.blue,"stroke-width":4})})();
+el("text",{x:bx+bw/2,y:by-10,"text-anchor":"middle","font-size":19,fill:col.ink,"font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"},"Cc branch |Y| / gmc");
+[["0.1×",-1],["fz",0],["10×",1]].forEach(a=>el("text",{x:bX(a[1]),y:by+bh+22,"text-anchor":"middle","font-size":17,fill:"#5E6C84","font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"},a[0]));
+const bdot=el("circle",{r:10,fill:col.red});
+const head=el("text",{x:X(.2),y:Y(10.25),"font-size":27,"font-weight":700,fill:col.blue,"font-family":"-apple-system,Segoe UI,Roboto,Arial,sans-serif"});
+/* ---------- update ---------- */
+const eng=(v,u)=>{const a=Math.abs(v);const t=a>=1?[1,""]:a>=1e-3?[1e3,"m"]:a>=1e-6?[1e6,"µ"]:a>=1e-9?[1e9,"n"]:[1e12,"p"];const x=a*t[0];return (x>=100?x.toFixed(0):x>=10?x.toFixed(1):x.toFixed(2))+" "+t[1]+u};
+const fHz=f=>f>=1e9?(f/1e9).toFixed(2)+" GHz":f>=1e6?(f/1e6).toFixed(1)+" MHz":(f/1e3).toFixed(1)+" kHz";
+const deg=r=>{let d=r*180/Math.PI;d=((d+180)%360+360)%360-180;return (d>=0?"+":"")+d.toFixed(0)+"°"};
+/* ---------- Bode panel ---------- */
+const bsvg=$("bode"), FF="-apple-system,Segoe UI,Roboto,Arial,sans-serif", N=401;
+function be(n,a,t){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t!=null)e.textContent=t;bsvg.appendChild(e);return e}
+const fO=v=>v>=1e6?(v/1e6).toPrecision(3)+" MΩ":v>=1e3?(v/1e3).toPrecision(3)+" kΩ":v.toPrecision(3)+" Ω";
+let B=null,bK="";
+function drawBode(){
+  const key=["gmc","cc","gm2","cl","c1"].map(i=>$(i).value).join("|"); if(key===bK)return; bK=key;
+  while(bsvg.firstChild)bsvg.removeChild(bsvg.firstChild);
+  const h=[],ph=[];let prev=0,fz=0,p=null;
+  for(let i=0;i<N;i++){const r=solve(Math.pow(10,-2+4*i/(N-1)));fz=r.fz;p=r.p;h.push(mag(r.Vo)/Ii);let a=ang(sc(r.Vo,-1))*180/Math.PI;if(i){while(a-prev>180)a-=360;while(a-prev<-180)a+=360}prev=a;ph.push(a)}
+  const lo=Math.floor(Math.log10(Math.min.apply(null,h))),hi=Math.ceil(Math.log10(Math.max.apply(null,h)));
+  const x0=90,x1=975,m0=40,m1=300,q0=370,q1=590, bx=l=>x0+(l+2)/4*(x1-x0), my=v=>m1-(Math.log10(v)-lo)/(hi-lo)*(m1-m0), py=d=>q0+(20-d)/220*(q1-q0);
+  be("rect",{x:0,y:0,width:1000,height:640,fill:"#FFFFFF"});
+  [[m0,m1],[q0,q1]].forEach(a=>{be("rect",{x:bx(-1),y:a[0],width:bx(1)-bx(-1),height:a[1]-a[0],fill:"#DEEBFF"});be("rect",{x:x0,y:a[0],width:x1-x0,height:a[1]-a[0],fill:"none",stroke:col.grid,"stroke-width":1.5});
+    [["0.01×",-2],["0.1×",-1],["fz",0],["10×",1],["100×",2]].forEach(t=>{be("line",{x1:bx(t[1]),y1:a[0],x2:bx(t[1]),y2:a[1],stroke:col.grid,"stroke-width":1});be("text",{x:bx(t[1]),y:a[1]+20,"text-anchor":"middle","font-size":14,fill:"#5E6C84","font-family":FF},t[0])})});
+  for(let d=lo;d<=hi;d++){be("line",{x1:x0,y1:my(Math.pow(10,d)),x2:x1,y2:my(Math.pow(10,d)),stroke:col.grid,"stroke-width":1});be("text",{x:x0-8,y:my(Math.pow(10,d))+5,"text-anchor":"end","font-size":14,fill:"#5E6C84","font-family":FF},fO(Math.pow(10,d)))}
+  [0,-45,-90,-135,-180].forEach(d=>{be("line",{x1:x0,y1:py(d),x2:x1,y2:py(d),stroke:col.grid,"stroke-width":1});be("text",{x:x0-8,y:py(d)+5,"text-anchor":"end","font-size":14,fill:"#5E6C84","font-family":FF},d+"°")});
+  be("text",{x:x0,y:m0-12,"font-size":16,"font-weight":700,fill:col.ink,"font-family":FF},"|Vo / Ii|  (Ii fixed at 1 µA, so this is also the shape of Vo)");
+  be("text",{x:x0,y:q0-12,"font-size":16,"font-weight":700,fill:col.ink,"font-family":FF},"Phase of −Vo / Ii");
+  const zc=1/p.gmc, clampY=v=>Math.max(m0,Math.min(m1,my(v)));
+  be("line",{x1:bx(-2),y1:clampY(zc*100),x2:bx(0),y2:my(zc),stroke:col.ref,"stroke-width":2,"stroke-dasharray":"7 6"});
+  be("line",{x1:bx(0),y1:my(zc),x2:bx(2),y2:my(zc),stroke:col.ref,"stroke-width":2,"stroke-dasharray":"7 6"});
+  be("text",{x:bx(0)+8,y:my(zc)+20,"text-anchor":"start","font-size":14,fill:"#5E6C84","font-family":FF},"1/gmc = "+fO(zc));
+  const fp=Math.sqrt(p.gm2*p.gmc/(p.C1*p.CL))/(2*Math.PI), lp=Math.log10(fp/fz);
+  [[0,"zero  gmc/Cc",col.blue],[lp,"pole pair",col.red]].forEach(a=>{if(a[0]<-2||a[0]>2)return;[[m0,m1],[q0,q1]].forEach(b=>be("line",{x1:bx(a[0]),y1:b[0],x2:bx(a[0]),y2:b[1],stroke:a[2],"stroke-width":2,"stroke-dasharray":"3 5"}));
+    be("text",{x:bx(a[0])+6,y:m0+16,"font-size":14,"font-weight":700,fill:a[2],"font-family":FF},a[1])});
+  const pathOf=(arr,f)=>arr.map((v,i)=>(i?"L":"M")+bx(-2+4*i/(N-1)).toFixed(1)+","+f(v).toFixed(1)).join("");
+  be("path",{d:pathOf(h,my),fill:"none",stroke:col.blue,"stroke-width":3.5,"stroke-linejoin":"round"});
+  be("path",{d:pathOf(ph,d=>Math.max(q0,Math.min(q1,py(d)))),fill:"none",stroke:col.blue,"stroke-width":3.5,"stroke-linejoin":"round"});
+  const cur=[[m0,m1],[q0,q1]].map(a=>be("line",{y1:a[0],y2:a[1],stroke:col.ink,"stroke-width":1.5}));
+  B={h,ph,bx,my,py,cur,d1:be("circle",{r:8,fill:col.red,stroke:"#FFFFFF","stroke-width":2}),d2:be("circle",{r:8,fill:col.red,stroke:"#FFFFFF","stroke-width":2})};
+  const w=[2,Math.max(0,Math.min(2,lp)),Math.max(0,2-Math.max(0,lp))], rows=[
+    ["📉 Below the zero","under "+fHz(fz),"falls as 1/(ω·Cc), −20 dB per decade","near −90°"],
+    ["➖ Plateau",fHz(fz)+" to about "+fHz(fp)+" ("+(fp/fz).toFixed(1)+"× apart)","flat at 1/gmc = "+fO(zc),"rises back toward 0°"],
+    ["📉 Above the pole pair","over about "+fHz(fp),"falls at −40 dB per decade","drops to −180°"]];
+  $("rt").innerHTML=rows.map((r,i)=>"<tr><td class='n'>"+(i+1)+"</td><td>"+r[0]+"</td><td>"+r[1]+"</td><td>"+r[2]+"</td><td>"+r[3]+"</td><td><div class='row' style='flex-wrap:nowrap'><span class='n' style='font-family:var(--mono)'>"+w[i].toFixed(2)+"</span><div class='bar' style='flex:1'><i style='width:"+(w[i]/2*100).toFixed(0)+"%;background:"+(i==1?col.red:col.blue)+"'></i></div></div></td></tr>").join("");
+}
+function moveBode(l){const i=Math.round((l+2)/4*(N-1)),x=B.bx(l);B.cur.forEach(c=>{c.setAttribute("x1",x);c.setAttribute("x2",x)});
+  B.d1.setAttribute("cx",x);B.d1.setAttribute("cy",B.my(B.h[i]));B.d2.setAttribute("cx",x);B.d2.setAttribute("cy",B.py(B.ph[i]));
+  $("bread").textContent="|Vo / Ii| = "+fO(B.h[i])+"   phase "+(B.ph[i]>=0?"+":"")+B.ph[i].toFixed(0)+"°"}
+let mC=null,mK="";
+function maxes(){const key=["gmc","cc","gm2","cl","c1"].map(i=>$(i).value).join("|");if(key!==mK){mK=key;mC={};
+  for(let i=0;i<=120;i++){const r=solve(Math.pow(10,-1+i/60));["Vo","Vx","V1","ic","iz1","iCL","id2"].forEach(q=>{mC[q]=Math.max(mC[q]||0,mag(r[q]))})}}return mC}
+function update(){
+  const l=parseFloat($("f").value), mult=Math.pow(10,l), r=solve(mult), p0=ang(r.Vo), rel=z=>ang(z)-p0, k=mag(r.Vx)/mag(r.Vo);
+  $("fread").textContent="f = "+mult.toFixed(2)+" × fz = "+fHz(r.f);
+  $("yread").textContent="Cc branch |Y| = "+r.y.toFixed(2)+" × gmc";
+  head.textContent="f = "+mult.toFixed(2)+" × fz = "+fHz(r.f)+"   (fz = gmc / 2π·Cc = "+fHz(r.fz)+")";
+  const tt=(n,z,u)=>n+" = "+eng(mag(z),u)+" ∠"+deg(rel(z));
+  const fx=$("fix").checked, M=maxes();
+  const show=(key,name,unit,autoAmp)=>{const z=r[key],fs=M[key]*1.1;boxes[key](tt(name,z,unit),fx?mag(z)/fs*1.25:autoAmp,rel(z),fx?"full scale ±"+eng(fs,unit):"")};
+  show("Vo","Vo","V",1); show("Vx","Vx","V",k); show("V1","V1","V",1);
+  show("ic","ic through Cc and Mc","A",k); show("iz1","i into R1∥C1 (Ii + ic)","A",1);
+  show("iCL","i into CL","A",1); show("id2","Mb drain current gm2·V1","A",1);
+  $("note").textContent=fx?"Fixed y scale: each box keeps one scale for the whole 0.1× to 10× sweep, set by the largest value that quantity reaches (shown in the corner of the box), so a trace shrinks or grows as its real amplitude changes. Gray dashed trace is the phase of Vo only, not its size. Angles are relative to Vo. Each box shows two cycles at the current frequency."
+    :"Auto y scale: Vx and ic are drawn against Vo (full height is |Vo| and gmc·|Vo|). The other traces fill their box, so read their size from the title. Gray dashed trace is Vo. Angles are relative to Vo. Each box shows two cycles at the current frequency.";
+  drawBode(); moveBode(l);
+  bdot.setAttribute("cx",bX(l)); bdot.setAttribute("cy",bY(r.y));
+  const rows=[["🔵 Vo at OUT",r.Vo,"V"],["🔵 Vx at source of vb device",r.Vx,"V"],["🔵 V1 at gate of Mb",r.V1,"V"],
+    ["🔴 ic through Cc and Mc",r.ic,"A"],["🔴 i into R1∥C1 at V1",r.iz1,"A"],["🔴 Mb drain current",r.id2,"A"],["🔴 i into CL",r.iCL,"A"]];
+  let h="";["V","A"].forEach(u=>{const g=rows.filter(x=>x[2]==u).sort((a,b)=>mag(b[1])-mag(a[1])),mx=mag(g[0][1]);
+    g.forEach((x,i)=>{const c=u=="V"?col.blue:col.red;h+="<tr><td class='n'>"+(i+1)+"</td><td>"+x[0]+"</td><td class='n' style='color:"+c+"'>"+eng(mag(x[1]),u)+"</td><td><div class='bar'><i style='width:"+(100*mag(x[1])/mx).toFixed(1)+"%;background:"+c+"'></i></div></td><td class='n'>"+deg(rel(x[1]))+"</td></tr>"})});
+  $("tb").innerHTML=h;
+}
+let raf=0,t0=0,l0=0,dir=1;
+function stop(){cancelAnimationFrame(raf);raf=0;$("play").textContent="▶ Play sweep"}
+function tick(t){if(!t0)t0=t;let l=l0+dir*(t-t0)/4000; if(l>=1){l=1;dir=-1;l0=1;t0=t}else if(l<=-1){l=-1;dir=1;l0=-1;t0=t}
+  $("f").value=l.toFixed(3);update();raf=requestAnimationFrame(tick)}
+$("play").addEventListener("click",()=>{if(raf){stop();return}l0=parseFloat($("f").value);if(l0>=1)dir=-1;if(l0<=-1)dir=1;t0=0;$("play").textContent="⏸ Pause";raf=requestAnimationFrame(tick)});
+$("f").addEventListener("input",()=>{if(raf)stop();update()});
+document.querySelectorAll("button[data-j]").forEach(b=>b.addEventListener("click",()=>{if(raf)stop();$("f").value=b.dataset.j;update()}));
+["gmc","cc","gm2","cl","c1","fix"].forEach(id=>$(id).addEventListener("input",update));
+document.querySelectorAll("button[data-p]").forEach(b=>b.addEventListener("click",()=>{const v=b.dataset.p.split(",");["gmc","cc","gm2","cl","c1"].forEach((id,i)=>{$(id).value=v[i]});update()}));
+update();
+})();
+</script>
+</body></html>
